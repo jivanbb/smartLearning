@@ -1,0 +1,370 @@
+<?php
+defined('BASEPATH') or exit('No direct script access allowed');
+
+
+/**
+ *| --------------------------------------------------------------------------
+ *| Sp Board Controller
+ *| --------------------------------------------------------------------------
+ *| Sp Board site
+ *|
+ */
+class Sp_customer_detail extends Admin
+{
+
+	public function __construct()
+	{
+		parent::__construct();
+
+		$this->load->model('model_sp_customer_detail');
+		$this->load->model('group/model_group');
+		$this->lang->load('web_lang', $this->current_lang);
+		if (!$this->session->userdata('loggedin')) {
+			redirect('/', 'refresh');
+		}
+	}
+
+	/**
+	 * show all Sp Boards
+	 *
+	 * @var $offset String
+	 */
+	public function index($offset = 0)
+	{
+		if (check_role_exist_or_not(28, array( "view","edit","list"))) {
+		$positions = get_user_position();
+		$filter = $this->input->get('q');
+		$field 	= $this->input->get('f');
+		$id = get_user_data('id');
+		if (check_role_exist_or_not(28, array('self_only'))) {
+			foreach ($positions as $position) {
+				if (@$position->group_id > 1) {
+					$role ="self_only";
+				} else {
+					$role ="admin";
+				}
+			}
+		} else {
+			$role ="admin";
+		}
+		$this->data['sp_customer_details'] = $this->model_sp_customer_detail->get($id,$role, $filter, $field, $this->limit_page, $offset);
+		$this->data['sp_customer_detail_counts'] = $this->model_sp_customer_detail->count_all($id,$role, $filter, $field);
+		$this->data['offset'] = $offset;
+		$config = [
+			'base_url'     => ADMIN_NAMESPACE_URL  . '/sp_customer_detail/index/',
+			'total_rows'   => $this->data['sp_customer_detail_counts'],
+			'per_page'     => $this->limit_page,
+			'uri_segment'  => 4,
+		];
+
+		$this->data['pagination'] = $this->pagination($config);
+
+		$this->data['tables'] = $this->load->view('backend/standart/administrator/sp_customer_detail/sp_customer_detail_data_table', $this->data, true);
+
+		if ($this->input->get('ajax')) {
+			$this->response([
+				'tables' => $this->data['tables'],
+				'pagination' => $this->data['pagination'],
+				'total_row' => $this->data['sp_customer_detail_counts']
+			]);
+		}
+
+		$this->template->title('Board List');
+		$this->render('backend/standart/administrator/sp_customer_detail/sp_customer_detail_list', $this->data);
+	} else {
+		$this->session->set_flashdata('f_message', 'Sorry you do not have permission to access ');
+		$this->session->set_flashdata('f_type', 'warning');
+		redirect('administrator/dashboard','refresh');
+	}
+	}
+
+	
+
+	/**
+	 * Add New Sp Boards
+	 *
+	 * @return JSON
+	 */
+	public function add_save()
+	{
+		if (!check_role_exist_or_not(28, array("add"))) {
+			$this->session->set_flashdata('f_message', 'Sorry you do not have permission to access ');
+			$this->session->set_flashdata('f_type', 'warning');
+			redirect('administrator/dashboard','refresh');
+		}
+		$this->form_validation->set_rules('name', 'Name', 'trim|required');
+		$this->form_validation->set_rules('pan_no', 'Pan No', 'trim|callback_check_pan_number');
+		$this->form_validation->set_rules('is_client', 'Is Client', 'trim|required');
+		if ($this->form_validation->run()) {
+
+			$save_data = [
+				'name' => $this->input->post('name'),
+				'pan_no' => $this->input->post('pan_no'),
+				'address' => $this->input->post('address'),
+				'email' => $this->input->post('email'),
+				'is_client' => $this->input->post('is_client'),
+				'phone_no' => $this->input->post('phone_no'),
+				'created_at' => date('Y-m-d'),
+				'created_by' => get_user_data('id'),
+			];
+
+			$save_sp_customer_detail = $id = $this->model_sp_customer_detail->store($save_data);
+			if ($save_sp_customer_detail) {
+					$this->data['success'] = true;
+					$this->data['id'] 	   = $save_sp_customer_detail;
+					$this->data['message'] = cclang('success_save_data_stay');			
+			} else {
+
+					$this->data['success'] = false;
+					$this->data['message'] = cclang('data_not_change');
+			}
+		} else {
+			$this->data['success'] = false;
+			$this->data['message'] = 'Opss validation failed';
+			$this->data['errors'] = $this->form_validation->error_array();
+		}
+
+		$this->response($this->data);
+		exit;
+	}
+
+	function check_pan_number($input){
+		$checkUnique = $this->model_sp_customer_detail->get_single([
+			'pan_no' => $input
+		]);
+		$validated = true;
+	
+		if(!empty($input)){
+			if (preg_match('/^[0-9]{9}$/', $input)){
+				$validated =true;	
+			}else{
+				$this->form_validation->set_message('check_pan_number', 'Pan number should be exact 9 digit number.');
+				$validated = false;	
+			} 
+		}
+		if(!empty($checkUnique)){
+			if ($checkUnique->pan_no) {
+				$this->form_validation->set_message('check_pan_number', 'Pan Number already exist.');
+				$validated =false;
+			}	
+		}
+		
+	
+		return $validated; 
+	}
+
+	/**
+	 * Update view Sp Boards
+	 *
+	 * @var $id String
+	 */
+	public function edit($id)
+	{
+		if (check_role_exist_or_not(28, array( "edit"))) {
+
+		$this->data['sp_customer_detail'] = $this->model_sp_customer_detail->find($id);
+
+		$this->template->title('Client Update');
+		$this->render('backend/standart/administrator/sp_customer_detail/sp_customer_detail_update', $this->data);
+	} else {
+		$this->session->set_flashdata('f_message', 'Sorry you do not have permission to access ');
+		$this->session->set_flashdata('f_type', 'warning');
+		redirect('administrator/dashboard','refresh');
+	}
+	}
+
+	/**
+	 * Update Sp Boards
+	 *
+	 * @var $id String
+	 */
+	public function edit_save($id)
+	{
+		if (!check_role_exist_or_not(28, array("edit"))) {
+			$this->session->set_flashdata('f_message', 'Sorry you do not have permission to access ');
+			$this->session->set_flashdata('f_type', 'warning');
+			redirect('administrator/dashboard','refresh');
+		}
+		$this->form_validation->set_rules('name', 'Name', 'trim|required');
+		$this->form_validation->set_rules('pan_no', 'Pan No', 'trim|callback_check_pan_no[' . $id . ']');
+		$this->form_validation->set_rules('is_client', 'Is Client', 'trim|required');
+		if ($this->form_validation->run()) {
+
+			$save_data = [
+				'name' => $this->input->post('name'),
+				'pan_no' => $this->input->post('pan_no'),
+				'address' => $this->input->post('address'),
+				'is_client' => $this->input->post('is_client'),
+				'email' => $this->input->post('email'),
+				'phone_no' => $this->input->post('phone_no'),
+				'edited_at' => date('Y-m-d'),
+				'edited_by' => get_user_data('id'),
+			];
+
+			$save_sp_customer_detail = $this->model_sp_customer_detail->change($id, $save_data);
+
+			if ($save_sp_customer_detail) {
+				if ($this->input->post('save_type') == 'stay') {
+					$this->data['success'] = true;
+					$this->data['id'] 	   = $id;
+					$this->data['message'] = cclang('success_update_data_stay');
+				} else {
+					set_message(
+						cclang('success_update_data_redirect', []),
+						'success'
+					);
+
+					$this->data['success'] = true;
+					$this->data['redirect'] = admin_base_url('/sp_customer_detail');
+				}
+			} else {
+				if ($this->input->post('save_type') == 'stay') {
+					$this->data['success'] = false;
+					$this->data['message'] = cclang('data_not_change');
+				} else {
+					$this->data['success'] = false;
+					$this->data['message'] = cclang('data_not_change');
+					$this->data['redirect'] = admin_base_url('/sp_customer_detail');
+				}
+			}
+		} else {
+			$this->data['success'] = false;
+			$this->data['message'] = 'Opss validation failed';
+			$this->data['errors'] = $this->form_validation->error_array();
+		}
+
+		$this->response($this->data);
+	}
+
+	/**
+	 * delete Sp Boards
+	 *
+	 * @var $id String
+	 */
+	public function delete($id = null)
+	{
+		if (!check_role_exist_or_not(28, array("delete"))) {
+			$this->session->set_flashdata('f_message', 'Sorry you do not have permission to access ');
+			$this->session->set_flashdata('f_type', 'warning');
+			redirect('administrator/dashboard','refresh');
+		}
+
+		$this->load->helper('file');
+		$child_tables = array(
+			'sp_course' => 'board_university',
+		);
+		$field = 'id';
+		$exist = $this->model_sp_customer_detail->check_child_data_exist('sp_customer_detail', $id, $child_tables, $field);
+		if ($exist) {
+			$this->session->set_flashdata('f_message', 'Sorry this Board/University is used ');
+			$this->session->set_flashdata('f_type', 'warning');
+			redirect('administrator/oms_branch', 'refresh');
+		}
+		$arr_id = $this->input->get('id');
+		$remove = false;
+
+		if (!empty($id)) {
+			$remove = $this->_remove($id);
+		} elseif (count($arr_id) > 0) {
+			foreach ($arr_id as $id) {
+				$remove = $this->_remove($id);
+			}
+		}
+
+		if ($this->input->get('ajax')) {
+			if ($remove) {
+				$this->response([
+					"success" => true,
+					"message" => cclang('has_been_deleted', 'board')
+				]);
+			} else {
+				$this->response([
+					"success" => true,
+					"message" => cclang('error_delete', 'board')
+				]);
+			}
+		} else {
+			if ($remove) {
+				set_message(cclang('has_been_deleted', 'board'), 'success');
+			} else {
+				set_message(cclang('error_delete', 'board'), 'error');
+			}
+			redirect_back();
+		}
+	}
+
+	function check_pan_no($value,$id){
+		$oldValue = $this->model_sp_customer_detail->find($id);
+		// $validated = true;
+	
+		if ($oldValue->pan_no == $value) {
+			return TRUE;
+		}
+	
+		$checkUnique = $this->model_sp_customer_detail->get_single([
+			'pan_no' => $value
+		]);
+	
+		if(!empty($value)){
+			if (preg_match('/^[0-9]{9}$/', $value)){
+				if(!empty($checkUnique)){
+					if ($checkUnique->pan_no) {
+						$this->form_validation->set_message('check_pan_no', 'Pan Number already exist.');
+						return FALSE;
+					}	
+				}			
+				return TRUE;
+			}else{
+				$this->form_validation->set_message('check_pan_no', 'Pan number should be exact 9 digit number.');
+				return FALSE;
+			}	
+		}
+	
+	}
+	/**
+	 * delete Sp Boards
+	 *
+	 * @var $id String
+	 */
+	private function _remove($id)
+	{
+
+		return $this->model_sp_customer_detail->soft_delete($id);
+	}
+
+
+	/**
+	 * Export to excel
+	 *
+	 * @return Files Excel .xls
+	 */
+	public function export()
+	{
+		$this->is_allowed('sp_customer_detail_export');
+
+		$this->model_sp_customer_detail->export(
+			'sp_customer_detail',
+			'sp_customer_detail',
+			$this->model_sp_customer_detail->field_search
+		);
+	}
+
+	/**
+	 * Export to PDF
+	 *
+	 * @return Files PDF .pdf
+	 */
+	public function export_pdf()
+	{
+		$this->is_allowed('sp_customer_detail_export');
+
+		$this->model_sp_customer_detail->pdf('sp_customer_detail', 'sp_customer_detail');
+	}
+
+
+
+}
+
+
+/* End of file sp_customer_detail.php */
+/* Location: ./application/controllers/administrator/Sp Board.php */
